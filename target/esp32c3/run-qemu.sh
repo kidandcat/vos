@@ -29,6 +29,14 @@ lean --version
 mkdir -p "$ROOT/.lake/c3/init-c" "$ROOT/.lake/c3/extra-c"
 lake build Vos.Target.C3Demo
 
+# Init is not in the lake IR. Without this C, the bundler cannot name the
+# List modules behind a basename like Basic.c.o.export.
+if [ ! -s "$ROOT/.lake/c3/init-c/.complete" ]; then
+  echo "== generating C for Lean's Init (once per toolchain)"
+  bash "$ROOT/target/c3/gen_init_c.sh" "$(lean --print-prefix)" "$ROOT/.lake/c3/init-c"
+  : > "$ROOT/.lake/c3/init-c/.complete"
+fi
+
 python3 "$ROOT/target/c3/bundle.py" \
   --lean-prefix "$(lean --print-prefix)" \
   --ir "$ROOT/.lake/build/ir" \

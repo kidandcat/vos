@@ -149,8 +149,10 @@ Tests/Ref.lean         the second scheduler used by the differential test
 
 ```bash
 bash target/esp32c3/setup-tools.sh   # once: ESP-IDF v5.4.4, Espressif QEMU, its shared libs
-bash target/esp32c3/run-qemu.sh
+bash target/esp32c3/run-qemu.sh      # first run also emits C for Lean's Init
 ```
+
+The toolchain ships `Init` as host objects. `run-qemu.sh` writes C for those modules to `.lake/c3/init-c` once per toolchain (`target/c3/gen_init_c.sh`), then the bundler keeps the ones the demo reaches. That directory is not in git.
 
 Checked on this machine, not on a board:
 
