@@ -1,0 +1,11 @@
+if(NOT DEFINED VOS_BUNDLE)
+  set(VOS_BUNDLE $ENV{VOS_BUNDLE})
+endif()
+if(NOT VOS_BUNDLE)
+  message(FATAL_ERROR "Set VOS_BUNDLE to the output of target/c3/bundle.py")
+endif()
+include(${VOS_BUNDLE}/vos_bundle.cmake)
+
+idf_component_register(SRCS ${VOS_BUNDLE_SOURCES} INCLUDE_DIRS ${VOS_BUNDLE_INCLUDE})
+target_compile_options(${COMPONENT_LIB} PRIVATE -w -O2)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE UVL_HEAP_SIZE=98304)

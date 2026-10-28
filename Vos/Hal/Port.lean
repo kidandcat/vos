@@ -1,10 +1,11 @@
 /-!
 The seam between the portable kernel and a target.
 
-PR1 implements no peripheral and no interrupt shim. `host` records that the
-simulator has a clock and may call `Vos.Sched.tick` between steps, which is
-what makes a priority policy preemptive in the model. Later targets fill in
-the same record and a C shim; those shims are outside the proofs.
+`host` records that the simulator has a clock and may call `Vos.Sched.tick`
+between steps. The ESP32-C3 shim in `target/esp32c3` implements event wait
+and log; GPIO, SPI, I2C, UART, NVS, and the radio hook are declared in
+`vos_hal.h` and return -1. The proved kernel does not call them. The C3 demo
+is a pure function of the events the shim posts (`Vos.Target.C3Demo`).
 -/
 namespace Vos.Hal
 

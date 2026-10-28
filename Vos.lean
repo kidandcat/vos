@@ -10,3 +10,4 @@ import Vos.Mutex
 import Vos.Event
 import Vos.Hal.Port
 import Vos.Host.Sim
+import Vos.Target.C3Demo

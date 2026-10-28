@@ -3,3 +3,6 @@
 /out/
 *.olean
 *.ilean
+target/esp32c3/build/
+target/esp32c3/sdkconfig
+target/esp32c3/sdkconfig.old

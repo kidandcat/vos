@@ -18,3 +18,25 @@ jobs:
         run: |
           source "$HOME/.elan/env"
           lake exe vos-demo
+
+  qemu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          build: true
+          test: false
+      - name: Cache ESP-IDF v5.4.4 and its tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.espressif
+            /home/runner/esp/esp-idf
+            /home/runner/esp/qemu
+          key: idf-v5.4.4-esp32c3-qemu-9.2.2-${{ runner.os }}
+      - name: ESP-IDF, QEMU, libslirp
+        run: bash target/esp32c3/setup-tools.sh
+      - name: Boot the C3 demo in QEMU
+        run: bash target/esp32c3/run-qemu.sh

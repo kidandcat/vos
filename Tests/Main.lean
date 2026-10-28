@@ -7,6 +7,7 @@ import Vos.Queue
 import Vos.Sched
 import Vos.Sem
 import Vos.Spec.Queue
+import Vos.Target.C3Demo
 import Vos.Timer
 
 open Vos
@@ -226,6 +227,9 @@ def testSendReadies : IO Unit := do
   check "readied" ((w.qs q).items == [] && w.inbox 1 == some 7 &&
     w.sched.park 1 == .alive && w.sched.current == some 1)
 
+def testC3Demo : IO Unit := do
+  check "c3 trace" (Vos.Target.C3Demo.trace == [1, 2, 4])
+
 def testDiff : IO Unit := do
   for seed in [1, 42, 99, 2026] do
     for p in [Policy.cooperative, Policy.priority] do
@@ -245,6 +249,7 @@ def main : IO UInt32 := do
     testMutex
     testEvents
     testSendReadies
+    testC3Demo
     testRing 7 300
     testDiff
     IO.println "vos tests ok"
