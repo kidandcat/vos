@@ -1,7 +1,7 @@
 /*
- * ESP32-C3 shim. app_main is the one FreeRTOS task that runs Lean. An
- * esp_timer callback posts ticks onto an ESP-IDF queue and does not enter
- * the kernel. IDF's timer task is not a vos task.
+ * One FreeRTOS task runs Lean. An esp_timer callback posts ticks onto an
+ * ESP-IDF queue and does not enter the kernel. IDF's timer task is not a
+ * vos task. VOS_TAG is "c3" or "s3"; the exported demo is the same function.
  */
 #include <stdio.h>
 
@@ -14,6 +14,10 @@
 
 #include <lean/lean.h>
 
+#ifndef VOS_TAG
+#define VOS_TAG "c3"
+#endif
+
 extern void vos_rt_init(void);
 extern lean_object *vos_c3_init;
 extern lean_object *vos_c3_event(lean_object *s, uint32_t ev);
@@ -22,7 +26,7 @@ extern uint32_t vos_c3_code(lean_object *s);
 static QueueHandle_t events;
 
 void uvl_on_panic(const char *msg, int fatal) {
-    printf("vos c3: panic%s: %s\n", fatal ? " fatal" : "", msg ? msg : "");
+    printf("vos %s: panic%s: %s\n", VOS_TAG, fatal ? " fatal" : "", msg ? msg : "");
     if (fatal) {
         for (;;) {
             vTaskDelay(pdMS_TO_TICKS(1000));
@@ -37,51 +41,12 @@ int vos_hal_wait(uint32_t *ev) {
     return 0;
 }
 
-int vos_hal_gpio_set(int pin, int level) {
-    (void)pin;
-    (void)level;
-    return -1;
-}
-
-int vos_hal_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t n) {
-    (void)tx;
-    (void)rx;
-    (void)n;
-    return -1;
-}
-
-int vos_hal_i2c_write(uint8_t addr, const uint8_t *bytes, size_t n) {
-    (void)addr;
-    (void)bytes;
-    (void)n;
-    return -1;
-}
-
-int vos_hal_uart_write(const uint8_t *bytes, size_t n) {
-    (void)bytes;
-    (void)n;
-    return -1;
-}
-
-int vos_hal_nvs_get(const char *key, uint8_t *out, size_t *n) {
-    (void)key;
-    (void)out;
-    (void)n;
-    return -1;
-}
-
-int vos_hal_radio(const uint8_t *tx, size_t n) {
-    (void)tx;
-    (void)n;
-    return -1;
-}
-
 static void print_code(uint32_t c) {
     switch (c) {
-    case 1: vos_hal_log("vos c3: sent 41"); break;
-    case 2: vos_hal_log("vos c3: timer not due"); break;
-    case 4: vos_hal_log("vos c3: demo ok"); break;
-    default: printf("vos c3: fail %u\n", (unsigned)c); break;
+    case 1: printf("vos %s: sent 41\n", VOS_TAG); break;
+    case 2: printf("vos %s: timer not due\n", VOS_TAG); break;
+    case 4: printf("vos %s: demo ok\n", VOS_TAG); break;
+    default: printf("vos %s: fail %u\n", VOS_TAG, (unsigned)c); break;
     }
 }
 
@@ -101,6 +66,10 @@ static lean_object *step(lean_object *s, uint32_t ev, uint32_t *code) {
 }
 
 void app_main(void) {
+    if (vos_hal_selftest() != 0) {
+        printf("vos %s: hal fail\n", VOS_TAG);
+        return;
+    }
     events = xQueueCreate(8, sizeof(uint32_t));
     esp_timer_handle_t timer = NULL;
     const esp_timer_create_args_t args = {

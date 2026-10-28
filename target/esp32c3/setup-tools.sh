@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Install ESP-IDF v5.4.4 (esp32c3) and Espressif's riscv32 QEMU into $HOME.
-# Safe to re-run. apt is only used for QEMU's shared libraries and Python venv.
+# Install ESP-IDF v5.4.4 (esp32c3 and esp32s3) and Espressif's QEMU into $HOME.
+# Safe to re-run. apt is used for QEMU's shared libraries, Python venv, and
+# for cmake and ninja when install.sh has not put those two on PATH.
 set -euo pipefail
 IDF_TAG=v5.4.4
 QEMU_TAG=esp-develop-9.2.2-20260417
-QEMU_TAR=qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
-QEMU_URL=https://github.com/espressif/qemu/releases/download/${QEMU_TAG}/${QEMU_TAR}
+QEMU_BASE=https://github.com/espressif/qemu/releases/download/${QEMU_TAG}
 
 mkdir -p "$HOME/esp"
 if [ ! -f "$HOME/esp/esp-idf/export.sh" ]; then
@@ -13,35 +13,58 @@ if [ ! -f "$HOME/esp/esp-idf/export.sh" ]; then
 fi
 cd "$HOME/esp/esp-idf"
 git submodule update --init --recursive --depth 1
-./install.sh esp32c3
+./install.sh esp32c3 esp32s3
 
-if [ ! -x "$HOME/esp/qemu/qemu/bin/qemu-system-riscv32" ]; then
+fetch_qemu() {
+  local bin=$1 tar=$2
+  if [ -x "$HOME/esp/qemu/qemu/bin/$bin" ]; then
+    return 0
+  fi
   mkdir -p "$HOME/esp/qemu"
-  curl -fsSL -o /tmp/qemu-esp.tar.xz "$QEMU_URL"
-  tar -C "$HOME/esp/qemu" -xJf /tmp/qemu-esp.tar.xz
-fi
+  curl -fL --retry 3 -o "/tmp/$tar" "$QEMU_BASE/$tar"
+  tar -C "$HOME/esp/qemu" -xJf "/tmp/$tar"
+}
 
-# The published riscv32 binary is dynamically linked. A headless runner
-# has libc and not the rest; the loader error is not always libslirp.
+fetch_qemu qemu-system-riscv32 \
+  qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+fetch_qemu qemu-system-xtensa \
+  qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+
+# install.sh records cmake and ninja in its tool list but does not always
+# leave the commands on PATH (a system cmake with no ninja is the usual case).
+# idf.py will not configure without both.
 if command -v sudo >/dev/null; then
   sudo apt-get update -qq
   sudo apt-get install -y -qq \
     libslirp0 libpixman-1-0 libgcrypt20 libglib2.0-0 libsdl2-2.0-0 zlib1g \
-    python3.12-venv python3-pip
+    python3.12-venv python3-pip \
+    cmake ninja-build
 fi
-QEMU_BIN="$HOME/esp/qemu/qemu/bin/qemu-system-riscv32"
-if [ ! -x "$QEMU_BIN" ]; then
-  echo "qemu binary missing at $QEMU_BIN" >&2
-  find "$HOME/esp/qemu" -name 'qemu-system-riscv32' -print >&2 || true
+if ! command -v cmake >/dev/null || ! command -v ninja >/dev/null; then
+  echo "cmake and ninja must be on PATH. install.sh did not provide them." >&2
+  echo "Install packages cmake and ninja-build, then re-run this script." >&2
   exit 1
 fi
-# -machine help still loads SDL. dummy keeps a runner with no display alive.
+
 export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
-if ! "$QEMU_BIN" -machine help >/tmp/vos-qemu-help.txt 2>/tmp/vos-qemu-help.err; then
-  echo "qemu -machine help failed" >&2
-  ldd "$QEMU_BIN" >&2 || true
-  cat /tmp/vos-qemu-help.err >&2 || true
-  exit 1
-fi
-grep -q esp32c3 /tmp/vos-qemu-help.txt
-echo "esp32c3 tools ok"
+check_qemu() {
+  local bin=$1 machine=$2
+  local path="$HOME/esp/qemu/qemu/bin/$bin"
+  if [ ! -x "$path" ]; then
+    echo "qemu binary missing at $path" >&2
+    find "$HOME/esp/qemu" -name "$bin" -print >&2 || true
+    exit 1
+  fi
+  if ! "$path" -machine help >/tmp/vos-qemu-help.txt 2>/tmp/vos-qemu-help.err; then
+    echo "$bin -machine help failed" >&2
+    ldd "$path" >&2 || true
+    cat /tmp/vos-qemu-help.err >&2 || true
+    exit 1
+  fi
+  grep -q "$machine" /tmp/vos-qemu-help.txt
+}
+check_qemu qemu-system-riscv32 esp32c3
+check_qemu qemu-system-xtensa esp32s3
+echo "cmake $(cmake --version | head -1)"
+echo "ninja $(ninja --version)"
+echo "esp32c3 and esp32s3 tools ok"

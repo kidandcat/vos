@@ -1,6 +1,6 @@
 # vos
 
-A modular real-time kernel in Lean 4 (toolchain `v4.35.0`, the same as [uvl](https://github.com/kidandcat/uvl), [cairn](https://github.com/kidandcat/cairn) and [vlab](https://github.com/kidandcat/vlab)). Firmware and apps are meant to sit on this, including a later port of uvl's bare-metal UI and the Fecha door and gateway on ESP32-C3 and ESP32-S3. This repository does not replace FreeRTOS on those chips. On ESP32 the Lean kernel is one FreeRTOS task fed by an ESP-IDF queue. That target is not in this tree yet.
+A modular real-time kernel in Lean 4 (toolchain `v4.35.0`, the same as [uvl](https://github.com/kidandcat/uvl), [cairn](https://github.com/kidandcat/cairn) and [vlab](https://github.com/kidandcat/vlab)). Firmware and apps are meant to sit on this, including a later port of uvl's bare-metal UI and the Fecha door and gateway on ESP32-C3 and ESP32-S3. This repository does not replace FreeRTOS on those chips. On ESP32 the Lean kernel is one FreeRTOS task fed by an ESP-IDF queue. ESP32-C3 and ESP32-S3 are in this tree. Both were booted in QEMU, not on a board.
 
 The model is a pure function over a fixed task table and fixed queue capacities. Nothing in the kernel path allocates a new slot or grows a queue past its capacity. Modules are opt-in at the import: `Vos.Queue` does not import the scheduler, `Vos.Sched` does not import queues, and `Vos.Kernel` is the layer that uses both. `Vos.Hal` is only the port record. A target that does not import a module does not refer to it.
 
@@ -88,15 +88,16 @@ Not proved: that the cooperative policy is starvation-free for an arbitrary task
 - The C3 demo as a pure function (`Vos.Target.C3Demo.trace`): codes `[1, 2, 4]` for start, one tick, two ticks.
 - Differential: `Tests.Ref` is a second scheduler on arrays and `Nat` indexes. Both policies, seeds `1`, `42`, `99`, `2026`, 200 steps each, 4 tasks. The current task, ready list, clock, park, priority, delay flag, and deadline agreed at every step. A mismatch fails the test. This is not a proof that the reference is the spec.
 
-The same demo, compiled to C with the vendored single-threaded runtime and linked into one ESP-IDF image, was booted in QEMU. See below. That run is a test of the shim and the generated C. It is not a proof, and it is not a physical board.
+The same demo, compiled to C with the vendored single-threaded runtime and linked into an ESP-IDF image, was booted in QEMU on `esp32c3` and `esp32s3`. See below. That run is a test of the shim and the generated C. It is not a proof, and it is not a physical board.
 
 `lake exe vos-demo` is the same two-task script the test calls `demoOk`: priority 1 and 5, send `41`, delay 2, the low-priority task receives `41`, the high-priority task is still blocked at `now = 1` and running at `now = 2`.
 
 ## What is not verified
 
-- A physical ESP32-C3. The image below was booted in QEMU only.
-- ESP32-S3, RP2040, and uvl's bare-metal target.
-- GPIO, SPI, I2C, UART, NVS, and the radio hook. They are declared in `target/esp32c3/main/vos_hal.h` and the C3 shim returns -1. The demo does not call them.
+- A physical ESP32-C3 or ESP32-S3. Both images below were booted in QEMU only.
+- RP2040 and uvl's bare-metal target.
+- The GPIO level. The shim calls the IDF driver (`gpio_config`, `gpio_set_level`, `gpio_get_level` on pin 4). Under QEMU `esp32c3` and `esp32s3` the readback was 0 after a set to 1. The log says `hal gpio level unread`. The pin was not checked.
+- SPI, I2C, and the radio hook. No slave and no peer is attached in this QEMU command, so a transfer cannot be checked. Those three return -1 and the log says `stub`.
 - Priority inheritance, recursive locking, and timer callbacks as functions. The sync objects above are the model, not those FreeRTOS extras.
 - Drivers, radio, WiFi, BLE, TLS, MQTT, and the Fecha protocol. Those are not this kernel.
 - That compiling this Lean code to C preserves the theorems. The QEMU run shows this one demo produced the same three lines as the host bundle. It does not show that every theorem survives the compiler.
@@ -109,14 +110,14 @@ The portable core is `Sched`, `Queue`, and `Kernel`. A target supplies a clock a
 | --- | --- | --- |
 | `host` | Deterministic clock for tests and proofs. | Runs. |
 | ESP32-C3 | One FreeRTOS task (`app_main`) runs the Lean step. An `esp_timer` callback posts ticks on an ESP-IDF queue and does not enter the kernel. | Builds. Booted in QEMU `esp32c3`, not on a board. |
-| ESP32-S3 | Same shape, Xtensa toolchain. | Not started. |
+| ESP32-S3 | Same demo and the same shim, Xtensa toolchain. | Builds. Booted in QEMU `esp32s3`, not on a board. |
 | RP2040, uvl bare metal | Same core, different port. | Not started. Adding one does not require a change to `Sched` or `Queue`. |
 
 ## Runtime
 
 Host tests (`lake test`, `lake exe vos-demo`) use the ordinary Lean runtime. They do not link `libleanrt`.
 
-The ESP32-C3 image does not link `libleanrt` either. `target/c3/rt/uvl_rt.c` and `target/c3/include/lean/config.h` are byte-identical to [uvl](https://github.com/kidandcat/uvl) `ff2f323` (`baremetal/rt/uvl_rt.c`, `baremetal/include/lean/config.h`). `target/c3/SHA256SUMS` is checked by `target/esp32c3/run-qemu.sh`. `target/c3/include/uvl.h` is not that header: the runtime includes the name, and this file is only the heap-stats struct and the panic hook it actually uses. `target/c3/bundle.py` is the reachable-initializer loop from uvl's `uvl_bundle.py`, with vos entry points instead of the glyph table and the UVL shell.
+The ESP32-C3 and ESP32-S3 images do not link `libleanrt` either. They link the same bundle. `target/c3/rt/uvl_rt.c` and `target/c3/include/lean/config.h` are byte-identical to [uvl](https://github.com/kidandcat/uvl) `ff2f323` (`baremetal/rt/uvl_rt.c`, `baremetal/include/lean/config.h`). `target/c3/SHA256SUMS` is checked by `target/esp32c3/run-qemu.sh`. `target/c3/include/uvl.h` is not that header: the runtime includes the name, and this file is only the heap-stats struct and the panic hook it actually uses. `target/c3/bundle.py` is the reachable-initializer loop from uvl's `uvl_bundle.py`, with vos entry points instead of the glyph table and the UVL shell.
 
 uvl's bare-metal runtime (`baremetal/rt/uvl_rt.c` at the commit vlab pins, `ff2f323`) is a static pool, reference counting, no threads, no `Task`. That is the runtime a later vos image should use, because this kernel is also single-threaded: one loop, no shared Lean objects across threads, so the counters do not need to be atomic.
 
@@ -138,8 +139,11 @@ Vos/Spec/Sync.lean     names for the sync properties
 Vos/Hal/Port.lean      target capabilities
 Vos/Host/Sim.lean      host clock and the demo script
 Vos/Target/C3Demo.lean pure demo exported to C
+Vos/Target/Size/       footprint probes, one module each
 target/c3/             runtime, bundler, host harness
-target/esp32c3/        ESP-IDF project and QEMU script
+target/idf/            shared ESP-IDF shim (HAL, app_main)
+target/esp32c3/        C3 project and QEMU script
+target/esp32s3/        S3 project and QEMU script
 Tests/Ref.lean         the second scheduler used by the differential test
 ```
 
@@ -148,16 +152,55 @@ Tests/Ref.lean         the second scheduler used by the differential test
 `app_main` is the only task that calls Lean. It blocks on an ESP-IDF queue. An `esp_timer` callback posts a tick (`2`) and does not call Lean. One start event (`1`) is posted before the loop. The Lean side is `Vos.Target.C3Demo`: two tasks (priorities 1 and 5), one queue, one one-shot timer of 2 ticks. The return codes are `1` (sent 41, low task has it, timer armed), `2` (after one tick the timer is not due), `4` (after two ticks the timer is due and the high-priority task is current).
 
 ```bash
-bash target/esp32c3/setup-tools.sh   # once: ESP-IDF v5.4.4, Espressif QEMU, its shared libs
+bash target/esp32c3/setup-tools.sh   # once: IDF v5.4.4, both QEMU builds, cmake, ninja
 bash target/esp32c3/run-qemu.sh      # first run also emits C for Lean's Init
+bash target/esp32s3/run-qemu.sh
+bash target/esp/measure-modules.sh   # per-module text/data/bss, not the IDF image
 ```
+
+`install.sh` does not always leave `cmake` and `ninja` on `PATH`. `setup-tools.sh` installs the distro packages `cmake` and `ninja-build` when `sudo` is available, and it exits if either command is still missing. `idf.py` will not configure without them.
 
 The toolchain ships `Init` as host objects. `run-qemu.sh` writes C for those modules to `.lake/c3/init-c` once per toolchain (`target/c3/gen_init_c.sh`), then the bundler keeps the ones the demo reaches. That directory is not in git.
 
-Checked on this machine, not on a board:
+Checked on this machine, not on a board. ESP-IDF v5.4.4, `riscv32-esp-elf-gcc` 14.2 and `xtensa-esp-elf-gcc` 14.2, QEMU `esp-develop-9.2.2-20260417`.
 
-- Host bundle `.lake/c3/bundle/vos-c3-host` printed `vos c3: sent 41`, `vos c3: timer not due`, `vos c3: demo ok`.
-- QEMU `esp32c3` from `esp-develop-9.2.2-20260417`, image built with ESP-IDF v5.4.4 (`riscv32-esp-elf-gcc` 14.2). The serial log contained those three lines in that order, then `main_task: Returned from app_main()`. No `vos c3: fail` and no fatal panic.
-- `riscv32-esp-elf-size` on `target/esp32c3/build/vos_c3.elf`: text 213286, data 40368, bss 348950. `vos_c3.bin` is 253776 bytes (`0x3df50`). This is the whole linked image, ESP-IDF included. The static pool in the vendored runtime is 96 KiB of that bss (`UVL_HEAP_SIZE`). It is not a measurement from a chip.
+The serial log on each machine, in order, contained `hal uart ok`, `hal nvs ok`, `hal gpio level unread 0`, `hal spi stub`, `hal i2c stub`, `hal radio stub`, then `sent 41`, `timer not due`, `demo ok`, then `main_task: Returned from app_main()`. No `hal fail`, no `vos c3: fail` or `vos s3: fail`, and no fatal panic.
 
-CI runs the same `run-qemu.sh` in the `qemu` job. If that job fails because the runner cannot install IDF or QEMU, the script above is the reproduction. The proofs do not depend on it.
+UART is `uart_write_bytes` on UART0. NVS stores the byte `0xA5` under the key `probe` in namespace `vos` and reads it back. GPIO calls the driver; the level did not come back. SPI, I2C, and radio stay stubs.
+
+### Image size
+
+These are one link of the whole ESP-IDF image, the vos pool included (96 KiB, `UVL_HEAP_SIZE`). They are not a chip measurement. `idf.py size` is the memory map. `*-elf-size` is the raw ELF, and its columns do not match that map (it folds `.rodata` into `data`, and its `bss` is larger than the DRAM `.bss` the map reports). The `.bin` length is the app file, which is padded above `idf.py size`'s "total image size".
+
+An earlier C3 link, before these HAL drivers, was reported as `data` 40368 and `.bin` 253776. Other builds of that same image came out `data` 40376 and 40384, `.bin` 253792. That is 8 or 16 bytes. Treat the byte count as approximate: the number is the whole IDF link, and the app image pads flash segments to 16 bytes. The table below is this tree, with the UART, NVS, and GPIO drivers linked, so it is larger than that earlier image.
+
+| | C3 | S3 |
+| --- | ---: | ---: |
+| `idf.py size` total image | 305036 | 308772 |
+| app `.bin` bytes | 305152 | 308896 |
+| flash code (`.text`) | 202570 | 185982 |
+| flash data | 40336 | 45604 |
+| RAM used | 164622 DRAM | 161791 DIRAM |
+| of which `.data` | 6092 | 12152 |
+| of which `.bss` | 102520 | 101016 |
+| of which executable in RAM | 56010 DRAM `.text` | 48623 DIRAM `.text`, plus 16383 IRAM |
+| `*-elf-size` text / data / bss | 258836 / 46200 / 421326 | 251244 / 57528 / 608417 |
+
+The 96 KiB pool is inside the `.bss` figure. C3 has no separate IRAM row in `idf.py size`; the executable RAM it reports is DRAM `.text`.
+
+### What each module adds
+
+`target/esp/measure-modules.sh` bundles one exported probe, then links that C with the chip gcc and `--gc-sections`. The harness calls `uvl_heap_alloc` so the 98304-byte pool is in every row, including `empty`. The delta is against `empty`. It includes Init code that the probe references and `empty` does not. It does not include ESP-IDF. Sem, mutex, and event import the scheduler, so their delta includes `Vos.Sched`. Kernel imports the queue and the scheduler.
+
+| probe | opt-in | C3 text | C3 Δtext | C3 Δdata | C3 Δbss | S3 text | S3 Δtext | S3 Δdata | S3 Δbss |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| empty | prelude | 1728 | 0 | 0 | 0 | 1031 | 0 | 0 | 0 |
+| queue | `Vos.Queue` | 11374 | 9646 | 12 | 24 | 8903 | 7872 | 0 | 24 |
+| sched | `Vos.Sched` | 26738 | 25010 | 36 | 60 | 21859 | 20828 | 0 | 64 |
+| kernel | `Vos.Kernel` (and Queue, Sched) | 56274 | 54546 | 48 | 60 | 46875 | 45844 | 0 | 64 |
+| timer | `Vos.Timer` | 13362 | 11634 | 44 | 60 | 11023 | 9992 | 4 | 64 |
+| sem | `Vos.Sem` (and Sched) | 31966 | 30238 | 36 | 48 | 26491 | 25460 | 0 | 48 |
+| mutex | `Vos.Mutex` (and Sched) | 33962 | 32234 | 52 | 72 | 28319 | 27288 | 0 | 72 |
+| event | `Vos.Event` (and Sched) | 32512 | 30784 | 60 | 84 | 27003 | 25972 | 0 | 88 |
+
+CI runs `target/esp32c3/run-qemu.sh`, `target/esp32s3/run-qemu.sh`, and `target/esp/measure-modules.sh` in the `qemu` job. If that job cannot install IDF or QEMU, those scripts are the reproduction. The proofs do not depend on it.

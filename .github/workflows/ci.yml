@@ -35,7 +35,10 @@ jobs:
             /home/runner/.espressif
             /home/runner/esp/esp-idf
             /home/runner/esp/qemu
-          key: idf-v5.4.4-esp32c3-qemu-9.2.2-${{ runner.os }}
+          key: idf-v5.4.4-c3-s3-qemu-9.2.2-${{ runner.os }}
+          restore-keys: |
+            idf-v5.4.4-c3-s3-qemu-9.2.2-${{ runner.os }}
+            idf-v5.4.4-esp32c3-qemu-9.2.2-${{ runner.os }}
       - name: Cache generated Init C
         uses: actions/cache@v4
         with:
@@ -45,3 +48,7 @@ jobs:
         run: bash target/esp32c3/setup-tools.sh
       - name: Boot the C3 demo in QEMU
         run: bash target/esp32c3/run-qemu.sh
+      - name: Boot the S3 demo in QEMU
+        run: bash target/esp32s3/run-qemu.sh
+      - name: Module footprint
+        run: bash target/esp/measure-modules.sh

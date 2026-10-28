@@ -156,7 +156,9 @@ def main():
     ap.add_argument('--cc', default='cc')
     ap.add_argument('--host-heap-kb', type=int, default=256, help='pool size of the host harness')
     ap.add_argument('--entry', default='Vos.Target.C3Demo',
-                    help='module that exports vos_c3_*; only its imports are bundled')
+                    help='module that exports the entry; only its imports are bundled')
+    ap.add_argument('--harness', default=os.path.join(HERE, 'host_harness.c'),
+                    help='C file that calls the exports so --gc-sections keeps them')
     args = ap.parse_args()
 
     work = args.work or args.out.rstrip('/') + '.work'
@@ -255,7 +257,7 @@ def main():
             out += hit
         return out
     rt = [os.path.join(HERE, 'rt', 'uvl_rt.c')]
-    harness = os.path.join(HERE, 'host_harness.c')
+    harness = args.harness
     keep = set()
     it = 0
     while True:
