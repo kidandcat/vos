@@ -1,7 +1,12 @@
 import Vos.Spec.Queue
 import Vos.Spec.Sched
+import Vos.Spec.Sync
 import Vos.Queue
 import Vos.Sched
 import Vos.Kernel
+import Vos.Timer
+import Vos.Sem
+import Vos.Mutex
+import Vos.Event
 import Vos.Hal.Port
 import Vos.Host.Sim

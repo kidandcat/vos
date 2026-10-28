@@ -137,6 +137,23 @@ theorem recv_head (w : World α nt nq cap) (p : Policy) (qi : Fin nq)
   simp [recv, hc, hin, Vos.Queue.dequeue, Vos.Queue.dequeue_spec, hitems,
     Vos.Spec.Queue.deq_head, release, hsend, setQ]
 
+/-- The receiver `send` hands the message to is the task `unblock` readies. -/
+theorem send_readies_waiter (w : World α nt nq cap) (p : Policy) (qi : Fin nq) (m : α)
+    (i r : Fin nt) (rs : List (Fin nt)) (hc : w.sched.current = some i)
+    (hempty : (w.qs qi).items = []) (hcap : cap > 0)
+    (hw : w.recvWait qi = r :: rs) (hblk : w.sched.park r = .blocked)
+    (hinv : Inv w.sched) :
+    (send w p qi m).sched.park r = .alive ∧
+      (r ∈ (send w p qi m).sched.ready ∨ (send w p qi m).sched.current = some r) ∧
+      Inv (send w p qi m).sched := by
+  have hroom : (w.qs qi).items.length < cap := by simp [hempty]; omega
+  have hacc := Vos.Spec.Queue.enq_accept (items := (w.qs qi).items) (a := m) (cap := cap) hroom
+  simp [hempty] at hacc
+  have hs : (send w p qi m).sched = unblock w.sched p r := by
+    simp [send, hc, hroom, hw, hcap, hempty, setQ, Vos.Queue.enqueue, Vos.Queue.dequeue,
+      Vos.Queue.enqueue_spec, Vos.Queue.dequeue_spec, hacc, Vos.Spec.Queue.deq_head]
+  simpa [hs] using unblock_readies w.sched hinv p r hblk
+
 theorem recv_empty (w : World α nt nq cap) (p : Policy) (qi : Fin nq)
     (i : Fin nt) (hc : w.sched.current = some i) (hin : w.inbox i = none)
     (hempty : (w.qs qi).items = []) (hinv : Inv w.sched) :

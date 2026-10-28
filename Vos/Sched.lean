@@ -895,6 +895,26 @@ theorem unblock_inv (s : Sched n) (h : Inv s) (p : Policy) (i : Fin n) :
     exact dispatch_inv _ (promote_inv s h i hidle) p
   · exact h
 
+/-- Unblocking a blocked task makes it alive and either ready or current. -/
+theorem unblock_readies (s : Sched n) (h : Inv s) (p : Policy) (i : Fin n)
+    (hb : s.park i = .blocked) :
+    (unblock s p i).park i = .alive ∧
+      (i ∈ (unblock s p i).ready ∨ (unblock s p i).current = some i) ∧
+      Inv (unblock s p i) := by
+  have hb' : (s.park i == .blocked) = true := (beq_iff_eq).2 hb
+  have hidle := h.blocked_idle i hb
+  have hprom : Inv (promote s i (s.prio i)) := promote_inv s h i hidle
+  have hinv := dispatch_inv (promote s i (s.prio i)) hprom p
+  have hpark0 : (promote s i (s.prio i)).park i = .alive := by simp [promote]
+  have hf := dispatch_same_fields (promote s i (s.prio i)) p i
+  have hpark : (dispatch (promote s i (s.prio i)) p).park i = .alive := by
+    simpa [hf.1] using hpark0
+  refine ⟨?_, ?_, ?_⟩
+  · simpa [unblock, hb'] using hpark
+  · have hlive := hinv.alive_live i hpark
+    simpa [unblock, hb'] using hlive
+  · simpa [unblock, hb'] using hinv
+
 theorem delay_inv (s : Sched n) (h : Inv s) (p : Policy) (dt : Nat) : Inv (delay s p dt) := by
   unfold delay
   split

@@ -1,9 +1,13 @@
 import Tests.Ref
+import Vos.Event
 import Vos.Host.Sim
 import Vos.Kernel
+import Vos.Mutex
 import Vos.Queue
 import Vos.Sched
+import Vos.Sem
 import Vos.Spec.Queue
+import Vos.Timer
 
 open Vos
 
@@ -127,6 +131,101 @@ def testRing (seed : UInt64) (steps : Nat) : IO Unit := do
       fail s!"contents {q.items} vs {ringContents buf head count}"
     unless q.items.length ≤ cap do fail "over cap"
 
+def bit (i : Fin 32) : Vos.Event.Bits := fun j => j == i
+
+def testTimers : IO Unit := do
+  let ts0 := Vos.Timer.start (Vos.Timer.Timers.empty 1) 0 3 0
+  let ts1 := Vos.Timer.tick ts0
+  let ts2 := Vos.Timer.tick ts1
+  check "timer early" (ts2.now == 2 && (ts2.slot 0).due == false && (ts2.slot 0).active == true)
+  let ts3 := Vos.Timer.tick ts2
+  check "timer fires" (ts3.now == 3 && (ts3.slot 0).due == true && (ts3.slot 0).active == false)
+  let per0 := Vos.Timer.start (Vos.Timer.Timers.empty 1) 0 1 2
+  let per1 := Vos.Timer.tick per0
+  check "period arms" ((per1.slot 0).due == true && (per1.slot 0).deadline == 3)
+  let (per2, seen) := Vos.Timer.takeDue per1 0
+  check "take due" (seen && (per2.slot 0).due == false && (per2.slot 0).deadline == 3)
+  let per3 := Vos.Timer.tick per2
+  check "period waits" (per3.now == 2 && (per3.slot 0).due == false)
+
+def testSem : IO Unit := do
+  let p : Policy := .priority
+  let (s0, _) := Sched.spawn (Sched.empty 1) p 1
+  let sem0 := Vos.Sem.Sem.empty 1 2
+  let (sem1, _, ok1) := Vos.Sem.give sem0 s0 p
+  let (sem2, _, ok2) := Vos.Sem.give sem1 s0 p
+  let (sem3, _, ok3) := Vos.Sem.give sem2 s0 p
+  check "sem inc" (ok1 && ok2 && sem2.count == 2 && !ok3 && sem3.count == 2)
+  let (sem4, s4, ok4) := Vos.Sem.take sem3 s0 p
+  let (sem5, _, ok5) := Vos.Sem.take sem4 s4 p
+  check "sem dec" (ok4 && ok5 && sem5.count == 0)
+  let (sem6, s6, ok6) := Vos.Sem.take sem5 s4 p
+  check "sem blocks" (!ok6 && sem6.count == 0 && s6.park 0 == .blocked)
+  let (sem7, s7, ok7) := Vos.Sem.give sem6 s6 p
+  check "sem wakes" (ok7 && sem7.count == 0 && s7.park 0 == .alive)
+  -- Non-blocking fragment against a counter, 80 steps, seed 11.
+  let max := 3
+  let mut sem : Vos.Sem.Sem 1 := Vos.Sem.Sem.empty 1 max
+  let mut count := 0
+  let mut x : UInt64 := 11
+  for _ in List.range 80 do
+    let give? := x.toNat % 2 == 0
+    x := Tests.Ref.lcg x
+    if give? then
+      let (sem', _, ok) := Vos.Sem.give sem s0 p
+      sem := sem'
+      if count < max then
+        count := count + 1
+        unless ok do fail "sem ref accepted"
+      else
+        unless !ok do fail "sem ref saturated"
+    else if 0 < count then
+      let (sem', _, ok) := Vos.Sem.take sem s0 p
+      sem := sem'
+      count := count - 1
+      unless ok do fail "sem ref take"
+    unless sem.count == count do fail s!"sem count {sem.count} ref {count}"
+
+def testMutex : IO Unit := do
+  let p : Policy := .cooperative
+  let (s1, _) := Sched.spawn (Sched.empty 2) p 1
+  let (s2, _) := Sched.spawn s1 p 1
+  let (m1, s3, ok) := Vos.Mutex.lock (Vos.Mutex.Mutex.empty 2) s2 p
+  check "lock" (ok && m1.owner == some 0 && s3.current == some 0)
+  let s4 := Sched.yieldTask s3 p
+  check "other runs" (s4.current == some 1)
+  let (m2, s5, ok2) := Vos.Mutex.lock m1 s4 p
+  check "excluded" (!ok2 && m2.owner == some 0 && s5.park 1 == .blocked && s5.current == some 0)
+  let (m3, s6, ok3) := Vos.Mutex.unlock m2 s5 p
+  check "passed" (ok3 && m3.owner == some 1 && s6.park 1 == .alive)
+  let (m4, s7, ok4) := Vos.Mutex.unlock m3 s6 p
+  check "foreign" (!ok4 && m4.owner == some 1 && s7.current == s6.current)
+
+def testEvents : IO Unit := do
+  let p : Policy := .priority
+  let (s0, _) := Sched.spawn (Sched.empty 1) p 1
+  let s1 := Sched.block s0 p
+  check "blocked" (s1.park 0 == .blocked)
+  let g : Vos.Event.Group 1 := { Vos.Event.Group.empty 1 with
+    waiters := [0], want := fun _ => bit 0, waitAll := fun _ => false }
+  let (g1, s2) := Vos.Event.setBits g s1 p (bit 1)
+  check "stays" (g1.waiters == [0] && s2.park 0 == .blocked && g1.bits 0 == false && g1.bits 1 == true)
+  let (g2, s3) := Vos.Event.setBits g1 s2 p (bit 0)
+  check "wakes" (g2.waiters == [] && s3.park 0 == .alive && g2.bits 0 == true && g2.bits 1 == true)
+
+def testSendReadies : IO Unit := do
+  let p : Policy := .priority
+  let w : Vos.Kernel.World Nat 2 1 4 := Vos.Kernel.World.empty Nat 2 1 4
+  let q : Fin 1 := 0
+  let (w, lo) := Vos.Host.spawn w p 1
+  let (w, hi) := Vos.Host.spawn w p 5
+  check "ids" (lo == some 0 && hi == some 1 && w.sched.current == some 1)
+  let (w, v) := Vos.Kernel.recv w p q
+  check "recv blocks" (v == none && w.sched.park 1 == .blocked && w.sched.current == some 0)
+  let w := Vos.Kernel.send w p q 7
+  check "readied" ((w.qs q).items == [] && w.inbox 1 == some 7 &&
+    w.sched.park 1 == .alive && w.sched.current == some 1)
+
 def testDiff : IO Unit := do
   for seed in [1, 42, 99, 2026] do
     for p in [Policy.cooperative, Policy.priority] do
@@ -141,6 +240,11 @@ def main : IO UInt32 := do
     testCoop
     testDelay
     testKernel
+    testTimers
+    testSem
+    testMutex
+    testEvents
+    testSendReadies
     testRing 7 300
     testDiff
     IO.println "vos tests ok"
