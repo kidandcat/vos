@@ -2,8 +2,9 @@
 # Build the C3 demo and boot it under Espressif QEMU (machine esp32c3).
 # Checks the serial log for the three demo lines, in order.
 #
-# Requires: elan (Lean 4.35.0), ESP-IDF v5.4.x on IDF_PATH, qemu-system-riscv32
-# with the esp32c3 machine, and libslirp. See target/esp32c3/setup-tools.sh.
+# Requires: elan (Lean 4.35.0), ESP-IDF v5.4.x on IDF_PATH, and Espressif's
+# qemu-system-riscv32 (machine esp32c3) plus the shared libraries in
+# target/esp32c3/setup-tools.sh.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
@@ -50,6 +51,8 @@ esptool.py --chip esp32c3 merge_bin --fill-flash-size 4MB -o flash_image.bin @fl
 mkdir -p "$(dirname "$LOG")"
 : > "$LOG"
 set +e
+# The binary is linked with SDL. dummy avoids a display on a CI runner.
+export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
 timeout 120 "$QEMU" -nographic -icount 3 -machine esp32c3 \
   -drive "file=flash_image.bin,if=mtd,format=raw" >"$LOG" 2>&1 &
 qpid=$!

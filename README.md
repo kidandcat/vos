@@ -148,7 +148,7 @@ Tests/Ref.lean         the second scheduler used by the differential test
 `app_main` is the only task that calls Lean. It blocks on an ESP-IDF queue. An `esp_timer` callback posts a tick (`2`) and does not call Lean. One start event (`1`) is posted before the loop. The Lean side is `Vos.Target.C3Demo`: two tasks (priorities 1 and 5), one queue, one one-shot timer of 2 ticks. The return codes are `1` (sent 41, low task has it, timer armed), `2` (after one tick the timer is not due), `4` (after two ticks the timer is due and the high-priority task is current).
 
 ```bash
-bash target/esp32c3/setup-tools.sh   # once: ESP-IDF v5.4.4, Espressif QEMU, libslirp
+bash target/esp32c3/setup-tools.sh   # once: ESP-IDF v5.4.4, Espressif QEMU, its shared libs
 bash target/esp32c3/run-qemu.sh
 ```
 
