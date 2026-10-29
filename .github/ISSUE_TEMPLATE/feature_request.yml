@@ -1,0 +1,19 @@
+name: Feature request
+description: A change to the kernel, a target, or the docs
+title: "[feature] "
+labels: []
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What should change
+      description: Which module or target, and why.
+    validations:
+      required: true
+  - type: textarea
+    id: proof
+    attributes:
+      label: Proof, test, or neither
+      description: Say whether this needs a theorem, a host test, a QEMU log, or is docs only.
+    validations:
+      required: true

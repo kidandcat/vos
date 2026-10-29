@@ -1,5 +1,8 @@
 # vos
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version 0.1.0](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
+
 A modular real-time kernel in Lean 4 (toolchain `v4.35.0`, the same as [uvl](https://github.com/kidandcat/uvl), [cairn](https://github.com/kidandcat/cairn) and [vlab](https://github.com/kidandcat/vlab)). Firmware and apps are meant to sit on this, including a later port of uvl's bare-metal UI and the Fecha door and gateway on ESP32-C3 and ESP32-S3. This repository does not replace FreeRTOS on those chips. On ESP32 the Lean kernel is one FreeRTOS task fed by an ESP-IDF queue. ESP32-C3 and ESP32-S3 are in this tree. Both were booted in QEMU, not on a board.
 
 The model is a pure function over a fixed task table and fixed queue capacities. Nothing in the kernel path allocates a new slot or grows a queue past its capacity. Modules are opt-in at the import: `Vos.Queue` does not import the scheduler, `Vos.Sched` does not import queues, and `Vos.Kernel` is the layer that uses both. `Vos.Hal` is only the port record. A target that does not import a module does not refer to it.
@@ -217,3 +220,11 @@ The 96 KiB pool is inside the `.bss` figure. C3 has no separate IRAM row in `idf
 | event | `Vos.Event` (and Sched) | 32512 | 30784 | 60 | 84 | 27003 | 25972 | 0 | 88 |
 
 CI runs `target/esp32c3/run-qemu.sh`, `target/esp32s3/run-qemu.sh`, and `target/esp/measure-modules.sh` in the `qemu` job. If that job cannot install IDF or QEMU, those scripts are the reproduction. The proofs do not depend on it.
+
+## Version
+
+The package version is `0.1.0`, declared as `version := v!"0.1.0"` in `lakefile.lean`. The history is in `CHANGELOG.md`. `scripts/check-version.sh` fails when that declaration and the latest numbered changelog heading differ. Cutting a release is described in `RELEASING.md`. This repository does not publish the tag from CI.
+
+## License
+
+MIT. The copyright line in `LICENSE` is `Copyright (c) 2026 Jairo Caro-Accino Viciana`. The CYW43439 firmware blob is not part of this license and is not in the tree. See `docs/bare-metal.md`.

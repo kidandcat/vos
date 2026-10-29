@@ -1,0 +1,27 @@
+name: Bug report
+description: Something in the model, the tests, or a firmware image is wrong
+title: "[bug] "
+labels: []
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what you saw.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The git revision you ran.
+      placeholder: git rev-parse HEAD
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: How you ran it
+      description: Commands and the log. If you did not run it on hardware, say so. Do not paste secrets or the CYW43439 firmware blob.
+    validations:
+      required: true
