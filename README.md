@@ -4,7 +4,7 @@ A modular real-time kernel in Lean 4 (toolchain `v4.35.0`, the same as [uvl](htt
 
 The model is a pure function over a fixed task table and fixed queue capacities. Nothing in the kernel path allocates a new slot or grows a queue past its capacity. Modules are opt-in at the import: `Vos.Queue` does not import the scheduler, `Vos.Sched` does not import queues, and `Vos.Kernel` is the layer that uses both. `Vos.Hal` is only the port record. A target that does not import a module does not refer to it.
 
-The core stays small and standalone. It does not depend on a VM or on an AI-agent sandbox. That code, when it exists, lives under `Vos.Sandbox` or `Vos.Agent` and is imported only by a target that wants it. `Vos.lean` does not import it. `scripts/check-firmware-boundary.sh` fails if any other file under `Vos/` reaches those modules, and if the C bundled into the ESP32 images contains them. The same check covers `target/rp2040` and `target/rp2350` when those trees exist. The first bare-metal target is the Pico 2 W. That plan has not been built. It is `docs/bare-metal.md`.
+The core stays small and standalone. It does not depend on a VM or on an AI-agent sandbox. That code, when it exists, lives under `Vos.Sandbox` or `Vos.Agent` and is imported only by a target that wants it. `Vos.lean` does not import it. `scripts/check-firmware-boundary.sh` fails if any other file under `Vos/` reaches those modules, and if the C bundled into the ESP32 images contains them. The same check covers `target/rv32-virt`, and `target/rp2040` / `target/rp2350` when those trees exist. The bare-metal target is `rp2350-riscv` (Hazard3). The image that runs today is generic RV32 on QEMU `virt`, not that chip. `docs/bare-metal.md`.
 
 ```bash
 lake build
@@ -69,6 +69,9 @@ Equal priority keeps the earlier ready-list entry. A delay of `0` is a yield. Ta
 | `Event.clear_only`, `clear_bit` | Clearing bits does not change a bit outside the mask, and clears a bit inside it. |
 | `Event.set_keeps_waiter` | A sole waiter whose mask is still unsatisfied stays on the list, and the scheduler is unchanged. |
 | `Event.set_wakes` | A sole blocked waiter whose mask becomes satisfied leaves the list and is readied. |
+| `Arch.Mtime.pending_iff`, `setCmp_clears`, `advance_before` | The machine timer is pending exactly while `cmp ≤ time`. A later compare clears it. Advancing `time` to still before `cmp` does not. |
+| `Arch.Mtime.take_idle`, `take_ticks`, `take_queues` | A disarmed timer is unchanged. An armed idle timer counts one tick and clears pending when the period is positive. An armed busy timer only increments `queued`. |
+| `Arch.Mtime.onTimer_applies` | That idle tick is one `Sched.tick`, and `Inv` is preserved. |
 
 `#print axioms` on these reports only `propext`, `Quot.sound`, and, where the proof uses the list-length lemma or `grind`, `Classical.choice`. `Queue.length_le` and `Mutex.at_most_one` have no axioms.
 
@@ -89,6 +92,8 @@ Not proved: that the cooperative policy is starvation-free for an arbitrary task
 - Mutex: task 0 locks, task 1's lock leaves the owner at 0 and blocks task 1, task 0's unlock stores owner 1 and marks task 1 alive. Unlock by the non-owner does not change the owner.
 - Events: a waiter for bit 0 stays blocked when bit 1 is set, and is readied when bit 0 is set. Bit 1 stays set.
 - The C3 demo as a pure function (`Vos.Target.C3Demo.trace`): codes `[1, 2, 4]` for start, one tick, two ticks.
+- The machine-timer model: time 4 is not pending against compare 5, time 5 is armed, `take` counts one tick and clears pending, and the same state with `busy` only increments `queued`. `onTimer` then moves `Sched.now` by one.
+- QEMU `virt`, `qemu-system-riscv32`, image `target/rv32-virt/vos-rv32.elf` built with `riscv64-unknown-elf-gcc` 13.2 (`-march=rv32imac_zicsr`). The serial log was `vos rv32: boot`, then `vos rv32: tick` three times, then `vos rv32: virt ok`. This is the CLINT at `0x02000000`. It is not the RP2350 SIO timer.
 - Differential: `Tests.Ref` is a second scheduler on arrays and `Nat` indexes. Both policies, seeds `1`, `42`, `99`, `2026`, 200 steps each, 4 tasks. The current task, ready list, clock, park, priority, delay flag, and deadline agreed at every step. A mismatch fails the test. This is not a proof that the reference is the spec.
 
 The same demo, compiled to C with the vendored single-threaded runtime and linked into an ESP-IDF image, was booted in QEMU on `esp32c3` and `esp32s3`. See below. That run is a test of the shim and the generated C. It is not a proof, and it is not a physical board.
@@ -98,6 +103,7 @@ The same demo, compiled to C with the vendored single-threaded runtime and linke
 ## What is not verified
 
 - A physical ESP32-C3 or ESP32-S3. Both images below were booted in QEMU only.
+- An RP2350. `target/rv32-virt` is QEMU `virt`, RV32IMAC, CLINT at `0x02000000`. The Hazard3 on the RP2350 uses the SIO platform timer (datasheet section 3.1.8). That image has not been booted. picoem, Lemur, and rp2350js were not run.
 - RP2040 and uvl's bare-metal target.
 - The GPIO level. The shim calls the IDF driver (`gpio_config`, `gpio_set_level`, `gpio_get_level` on pin 4). Under QEMU `esp32c3` and `esp32s3` the readback was 0 after a set to 1. The log says `hal gpio level unread`. The pin was not checked.
 - SPI, I2C, and the radio hook. No slave and no peer is attached in this QEMU command, so a transfer cannot be checked. Those three return -1 and the log says `stub`.
@@ -114,7 +120,8 @@ The portable core is `Sched`, `Queue`, and `Kernel`. A target supplies a clock a
 | `host` | Deterministic clock for tests and proofs. | Runs. |
 | ESP32-C3 | One FreeRTOS task (`app_main`) runs the Lean step. An `esp_timer` callback posts ticks on an ESP-IDF queue and does not enter the kernel. | Builds. Booted in QEMU `esp32c3`, not on a board. |
 | ESP32-S3 | Same demo and the same shim, Xtensa toolchain. | Builds. Booted in QEMU `esp32s3`, not on a board. |
-| Pico 2 W (RP2350) | First bare-metal target. CYW43439 and an SX126x, no FreeRTOS and no ESP-IDF. | Not started. See `docs/bare-metal.md`. |
+| `rp2350-riscv` | Hazard3 on the RP2350. First bare-metal target. Not booted. | Plan only. See `docs/bare-metal.md`. |
+| QEMU `virt` RV32 | Generic machine timer and UART. Not an RP2350 memory map. | `target/rv32-virt`. Serial check in CI. |
 
 ## Runtime
 
@@ -141,7 +148,8 @@ Vos/Event.lean         32 event flags
 Vos/Spec/Sync.lean     names for the sync properties
 Vos/Hal/Port.lean      target capabilities
 Vos/Sandbox/           VM and agent sandbox; the core does not import it
-docs/bare-metal.md     Pico 2 W plan; nothing there is built
+docs/bare-metal.md     rp2350-riscv plan; the running image is QEMU virt
+target/rv32-virt/      generic RV32 startup, not an RP2350 image
 Vos/Host/Sim.lean      host clock and the demo script
 Vos/Target/C3Demo.lean pure demo exported to C
 Vos/Target/Size/       footprint probes, one module each

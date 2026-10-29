@@ -1,3 +1,4 @@
+import Vos.Arch.Mtime
 import Vos.Event
 import Vos.Kernel
 import Vos.Mutex
@@ -64,3 +65,10 @@ import Vos.Timer
 #print axioms Vos.Event.clear_bit
 #print axioms Vos.Event.set_keeps_waiter
 #print axioms Vos.Event.set_wakes
+#print axioms Vos.Arch.Mtime.pending_iff
+#print axioms Vos.Arch.Mtime.setCmp_clears
+#print axioms Vos.Arch.Mtime.advance_before
+#print axioms Vos.Arch.Mtime.take_idle
+#print axioms Vos.Arch.Mtime.take_ticks
+#print axioms Vos.Arch.Mtime.take_queues
+#print axioms Vos.Arch.Mtime.onTimer_applies

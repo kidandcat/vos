@@ -1,12 +1,25 @@
-# Bare metal: Pico 2 W first
+# Bare metal: `rp2350-riscv` first
 
-Not started. No RP2350 image has been compiled or booted here, and no CYW43439 or SX126x transaction has been run. This is the plan. It is not a proof and not a test.
+The first bare-metal core is the RP2350's Hazard3 RISC-V, platform name `rp2350-riscv`. The Cortex-M33 is a later option. RP2040, and the SX1276 on the older doors, stay later still, behind the same HAL and the same radio interface.
 
-The first bare-metal target is the Raspberry Pi Pico 2 W: an RP2350, the on-board CYW43439 Wi-Fi/Bluetooth chip, and an SX126x LoRa module on SPI. RP2040, and the SX1276 used by the older doors, stay later targets behind the same HAL and the same radio interface. They are not the first image.
+What actually runs in this tree is not that chip. `target/rv32-virt` is a generic RV32 image linked at `0x80000000` and booted on QEMU's `virt` machine. Its serial line is `vos rv32: virt ok`. It is not an RP2350 boot. No RP2350 emulator was started. No CYW43439 firmware was fetched or committed, and no SX126x transaction was run.
 
 The core stays the pure kernel. This target is opt-in. It must not be imported by `Vos.Sched`, `Vos.Queue`, or `Vos.Kernel`. VM and agent sandboxing stay in `Vos.Sandbox` and `Vos.Agent`. `scripts/check-firmware-boundary.sh` fails if a firmware bundle links those.
 
-No FreeRTOS and no ESP-IDF. Our own startup, vector table, and tick. The RP2350 has Cortex-M33 cores and Hazard3 RISC-V cores. The first image is Cortex-M33, one core. Hazard3 is a second image, later, and only if an emulator we have actually run executes it.
+No FreeRTOS and no ESP-IDF.
+
+## Hazard3 on the RP2350
+
+Source: RP2350 datasheet, RP-008373-DS-3, section 3.8. The two cores are identical. Each socket holds either a Cortex-M33 or a Hazard3; the one not selected is held in reset. Cortex-M33 is the default at boot (section 3.9). Section 3.8 lists the standard extensions RP2350 enables:
+
+- RV32I, M, A, C (also spelled Zca), Zba, Zbb, Zbs, Zbkb, Zcb, Zcmp, Zicsr
+- Machine and User modes, PMP with eight NAPOT regions, debug
+
+The same section's architecture string, preferred for GCC 14, is `rv32ima_zicsr_zifencei_zba_zbb_zbs_zbkb_zca_zcb_zcmp`. The table above that also lists Zifencei v2.0. Custom extensions in that section: Xh3power, Xh3bextm, Xh3irq, Xh3pmpm. `src/rp2_common/hardware_hazard3/include/hardware/hazard3/features.h` in the Pico SDK sets those four to version 1.0 when `PICO_RP2350` is set.
+
+The timer is not an Arm SysTick. Datasheet section 3.1.8, "RISC-V platform timer": one 64-bit counter shared by both cores, `MTIME` and `MTIMEH` in the SIO block. Each core has its own `MTIMECMP` / `MTIMECMPH` at the same address. The interrupt is asserted, unsigned, while `MTIME ≥ MTIMECMP`. It drives `mip.mtip` on the RISC-V cores and `SIO_IRQ_MTIMECMP`. The Hazard3 manual (https://wren.wtf/hazard3/doc/, interrupt-request table) says the core's `timer_irq` pin is `mip.mtip` and should be wired to a standard `mtime`/`mtimecmp` peripheral. The generated register header `hardware/regs/rvcsr.h` in the Pico SDK names `mcause` code 7 as the timer IRQ. Xh3irq is the local controller for external system IRQs; it is not the machine timer.
+
+The QEMU `virt` image uses the CLINT at `0x02000000`, not the SIO block. Same compare, different address. That is why the log says `virt` and not `rp2350`.
 
 ## Two buses, one radio interface
 
@@ -22,7 +35,7 @@ Pin numbers are not fixed in this note. The PR that writes the C copies them fro
 
 The kernel tick is already a pure function. Around it:
 
-- SysTick, as a state and a step. An enabled timer with reload `n` raises one tick when the count expires. Writing the current register clears it. One accepted tick is one `Sched.tick`. A tick that arrives during a kernel step is queued, not re-entered. Core 1 is outside the model.
+- The machine timer, as a state and a step (`Vos.Arch.Mtime`). Pending while `cmp ≤ time`. `setCmp` to a later compare clears it. `advance` before the compare does not. `take` with a positive period counts one tick when the kernel is idle, and only increments `queued` when it is busy. `onTimer` applies that idle tick as one `Sched.tick`. Core 1 is outside the model. These are host theorems. They do not say the QEMU image implements them.
 - The SX126x codec. The bytes for a write and the matching read, and a busy flag that does not drop a finished transfer. The host runs that against a fake SPI trace. That is the encoder, not a radio and not the air.
 - The CYW43439 framing that we can see from the RP2350: SDPCM and ioctl headers, sequence numbers, and a download that is a sequence of writes covering a blob of a given length. The theorem is about those bytes. It says nothing about what the blob does after it starts.
 - A minimal IP codec, opt-in, not imported by the kernel. See below.
@@ -88,18 +101,16 @@ The first boot that can be claimed as a Pico 2 W is a serial log from a named em
 
 - The blob is opaque and large. SRAM on the RP2350 is 520 KB. The pool is 96 KB. A 230 KB blob that is only copied out to the CYW43439 still has to sit in flash, and the download buffer has to sit in RAM while it is sent. The first image should not link `Vos.Net` and the blob at the same time until those sizes are measured.
 - PIO gSPI is timing-sensitive. A model of SDPCM bytes does not show that the PIO program samples the wire correctly.
-- M33 is not M3. A bundle that runs on `mps2-an385` can still be wrong on the RP2350 (boot ROM, XIP, TrustZone left on). TrustZone stays off in the first image: everything secure, no claim about the other world.
-- One core. The second M33 and both Hazard3 cores stay reset. A theorem about core 0 says nothing about them.
+- A bundle that runs on QEMU `virt` can still be wrong on the RP2350 (boot ROM, XIP, SIO timer address). TrustZone is an Arm feature and is not this image.
+- One Hazard3. The other Hazard3 stays reset. A theorem about core 0 says nothing about core 1, and nothing about the Cortex-M33 sockets, which the datasheet holds in reset when RISC-V is selected.
 - SX126x and the later SX1276 do not share a register map. One `exchange` and two codecs. Not one C function full of `#ifdef` inside the kernel.
 - Proofs stop at the model. The C, the PIO program, the ROM, the blob, and both radios are trusted, not proved.
 
 ## Order
 
-No target code until the ESP32-S3 work is merged and this note has an answer.
-
-1. SysTick model and a C handler. Boot on `mps2-an385` and call it Cortex-M3, not a Pico.
-2. RP2350 Cortex-M33 startup and linker script. UART trace. Install one emulator from the table, or say that none of them booted, and do not call a cross-compile a boot.
-3. SX126x codec in Lean, host fake SPI. Hardware SPI C shim. No air.
-4. CYW43439 framing in Lean (headers and a blob download of a given length), PIO gSPI in C or assembly, mock bus on the host. The blob is linked only with its licence file. No association, no DHCP, no air.
-5. `Vos.Net`: Ethernet, IPv4, UDP, checksum theorems, one echo or one DHCP discover, against fake frames. The Pico target may import it. The kernel may not.
-6. Later, same interfaces: RP2040 startup, and an SX1276 codec beside the SX126x codec. Hazard3 only after an emulator we have run executes it.
+1. Done in this tree, and not an RP2350: `Vos.Arch.Mtime` on the host, and `target/rv32-virt` on QEMU `virt` (`vos rv32: virt ok`).
+2. Next: install one RP2350 emulator (picoem, Lemur, rp2350js, or another) and boot a Hazard3 image, or write down that none of them booted. Until that log exists, nothing is called `rp2350-riscv` at runtime.
+3. SX126x codec in Lean, host fake SPI. Hardware SPI C shim on the real map. No air.
+4. CYW43439 framing in Lean, PIO gSPI in C or assembly, mock bus on the host. The blob is linked only with its licence file. It is not committed in this change. No association, no DHCP, no air.
+5. `Vos.Net`: Ethernet, IPv4, UDP, checksum theorems, one echo or one DHCP discover, against fake frames. The kernel may not import it.
+6. Later, same interfaces: Cortex-M33 if a port wants it, RP2040 startup, and an SX1276 codec beside the SX126x codec.

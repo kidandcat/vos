@@ -65,6 +65,7 @@ trees = [
     root / "target" / "esp32s3",
     root / "target" / "rp2040",
     root / "target" / "rp2350",
+    root / "target" / "rv32-virt",
 ]
 needles = ("Vos.Sandbox", "Vos/Sandbox", "Vos.Agent", "Vos/Agent")
 for tree in trees:
