@@ -14,6 +14,8 @@ jobs:
           test: true
       - name: Kernel axioms
         run: bash scripts/check-axioms.sh
+      - name: Firmware does not link the sandbox
+        run: bash scripts/check-firmware-boundary.sh
       - name: Host demo
         run: |
           source "$HOME/.elan/env"

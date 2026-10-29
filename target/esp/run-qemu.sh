@@ -44,6 +44,7 @@ python3 "$ROOT/target/c3/bundle.py" \
 
 echo "---- host bundle ----"
 "$ROOT/.lake/c3/bundle/vos-c3-host"
+bash "$ROOT/scripts/check-firmware-boundary.sh" "$ROOT/.lake/c3/bundle"
 
 # shellcheck disable=SC1091
 source "$IDF_PATH/export.sh"
