@@ -4,7 +4,7 @@ A modular real-time kernel in Lean 4 (toolchain `v4.35.0`, the same as [uvl](htt
 
 The model is a pure function over a fixed task table and fixed queue capacities. Nothing in the kernel path allocates a new slot or grows a queue past its capacity. Modules are opt-in at the import: `Vos.Queue` does not import the scheduler, `Vos.Sched` does not import queues, and `Vos.Kernel` is the layer that uses both. `Vos.Hal` is only the port record. A target that does not import a module does not refer to it.
 
-The core stays small and standalone. It does not depend on a VM or on an AI-agent sandbox. That code, when it exists, lives under `Vos.Sandbox` or `Vos.Agent` and is imported only by a target that wants it. `Vos.lean` does not import it. `scripts/check-firmware-boundary.sh` fails if any other file under `Vos/` reaches those modules, and if the C bundled into the ESP32 images contains them. The same check covers `target/rp2040` and `target/rp2350` when those trees exist. A bare-metal plan that has not been built is in `docs/bare-metal.md`.
+The core stays small and standalone. It does not depend on a VM or on an AI-agent sandbox. That code, when it exists, lives under `Vos.Sandbox` or `Vos.Agent` and is imported only by a target that wants it. `Vos.lean` does not import it. `scripts/check-firmware-boundary.sh` fails if any other file under `Vos/` reaches those modules, and if the C bundled into the ESP32 images contains them. The same check covers `target/rp2040` and `target/rp2350` when those trees exist. The first bare-metal target is the Pico 2 W. That plan has not been built. It is `docs/bare-metal.md`.
 
 ```bash
 lake build
@@ -114,7 +114,7 @@ The portable core is `Sched`, `Queue`, and `Kernel`. A target supplies a clock a
 | `host` | Deterministic clock for tests and proofs. | Runs. |
 | ESP32-C3 | One FreeRTOS task (`app_main`) runs the Lean step. An `esp_timer` callback posts ticks on an ESP-IDF queue and does not enter the kernel. | Builds. Booted in QEMU `esp32c3`, not on a board. |
 | ESP32-S3 | Same demo and the same shim, Xtensa toolchain. | Builds. Booted in QEMU `esp32s3`, not on a board. |
-| RP2040, RP2350 | Bare metal. No FreeRTOS and no ESP-IDF. Plan only. | Not started. See `docs/bare-metal.md`. |
+| Pico 2 W (RP2350) | First bare-metal target. CYW43439 and an SX126x, no FreeRTOS and no ESP-IDF. | Not started. See `docs/bare-metal.md`. |
 
 ## Runtime
 
@@ -141,7 +141,7 @@ Vos/Event.lean         32 event flags
 Vos/Spec/Sync.lean     names for the sync properties
 Vos/Hal/Port.lean      target capabilities
 Vos/Sandbox/           VM and agent sandbox; the core does not import it
-docs/bare-metal.md     RP2040 / RP2350 plan; nothing there is built
+docs/bare-metal.md     Pico 2 W plan; nothing there is built
 Vos/Host/Sim.lean      host clock and the demo script
 Vos/Target/C3Demo.lean pure demo exported to C
 Vos/Target/Size/       footprint probes, one module each
