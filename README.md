@@ -227,4 +227,4 @@ The package version is `0.1.0`, declared as `version := v!"0.1.0"` in `lakefile.
 
 ## License
 
-MIT. The copyright line in `LICENSE` is `Copyright (c) 2026 kidandcat`. That is the owner of this repository. The CYW43439 firmware blob is not part of this license and is not in the tree. See `docs/bare-metal.md`.
+MIT. The copyright line in `LICENSE` is `Copyright (c) 2026 Jairo Caro-Accino Viciana`. The CYW43439 firmware blob is not part of this license and is not in the tree. See `docs/bare-metal.md`.
