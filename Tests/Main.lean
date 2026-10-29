@@ -7,7 +7,16 @@ import Vos.Queue
 import Vos.Sched
 import Vos.Sem
 import Vos.Spec.Queue
+import Vos.Hal.Port
 import Vos.Target.C3Demo
+import Vos.Target.Size.Empty
+import Vos.Target.Size.Event
+import Vos.Target.Size.Kernel
+import Vos.Target.Size.Mutex
+import Vos.Target.Size.Queue
+import Vos.Target.Size.Sched
+import Vos.Target.Size.Sem
+import Vos.Target.Size.Timer
 import Vos.Timer
 
 open Vos
@@ -230,6 +239,21 @@ def testSendReadies : IO Unit := do
 def testC3Demo : IO Unit := do
   check "c3 trace" (Vos.Target.C3Demo.trace == [1, 2, 4])
 
+def testSize : IO Unit := do
+  check "size empty" (Vos.Target.Size.Empty.sizeEmpty 0 == 0)
+  check "size queue" (Vos.Target.Size.Queue.sizeQueue 0 == 1)
+  check "size sched" (Vos.Target.Size.Sched.sizeSched 0 == 1)
+  check "size kernel" (Vos.Target.Size.Kernel.sizeKernel 0 == 1)
+  check "size timer" (Vos.Target.Size.Timer.sizeTimer 0 == 1)
+  check "size sem" (Vos.Target.Size.Sem.sizeSem 0 == 1)
+  check "size mutex" (Vos.Target.Size.Mutex.sizeMutex 0 == 1)
+  check "size event" (Vos.Target.Size.Event.sizeEvent 0 == 1)
+  let chip := Vos.Hal.espIdf
+  check "idf caps" (chip.gpio && chip.uart && chip.storage &&
+    (chip.spi == false) && (chip.i2c == false) && (chip.radio == false) &&
+    (chip.tickInterrupt == false))
+  check "same caps" (Vos.Hal.esp32c3.caps == Vos.Hal.esp32s3.caps)
+
 def testDiff : IO Unit := do
   for seed in [1, 42, 99, 2026] do
     for p in [Policy.cooperative, Policy.priority] do
@@ -250,6 +274,7 @@ def main : IO UInt32 := do
     testEvents
     testSendReadies
     testC3Demo
+    testSize
     testRing 7 300
     testDiff
     IO.println "vos tests ok"

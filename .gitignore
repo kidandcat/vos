@@ -6,3 +6,6 @@
 target/esp32c3/build/
 target/esp32c3/sdkconfig
 target/esp32c3/sdkconfig.old
+target/esp32s3/build/
+target/esp32s3/sdkconfig
+target/esp32s3/sdkconfig.old

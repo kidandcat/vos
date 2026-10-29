@@ -11,3 +11,11 @@ import Vos.Event
 import Vos.Hal.Port
 import Vos.Host.Sim
 import Vos.Target.C3Demo
+import Vos.Target.Size.Empty
+import Vos.Target.Size.Queue
+import Vos.Target.Size.Sched
+import Vos.Target.Size.Kernel
+import Vos.Target.Size.Timer
+import Vos.Target.Size.Sem
+import Vos.Target.Size.Mutex
+import Vos.Target.Size.Event
