@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Vos.Arch.Mtime`: a machine-timer state machine. Pending while `cmp ≤ time`. An idle `take` is one `Sched.tick`. A busy kernel only queues the tick.
 - `target/rv32-virt`: generic RV32 startup, UART, and a CLINT `mtime`/`mtimecmp` tick, booted on QEMU `virt`. The serial line is `vos rv32: virt ok`. This is not an RP2350 image.
 
+### Changed
+
+- ESP32-C3 and ESP32-S3 are the primary targets. Both boot in Espressif QEMU only. `rp2350-riscv`, the Pico 2 W, the CYW43439, and the SX126x are parked. `docs/bare-metal.md` records what a later board bring-up still has to show, and the order of those pull requests.
+- `scripts/check-firmware-boundary.sh` scans bundled C and `nm` symbol tables for `Vos_Sandbox` and `Vos_Agent`. A file name alone does not decide the result.
+- `VOS_QEMU` selects the QEMU binary in the chip wrappers. `target/esp/ensure-path.sh` puts `cmake` and `ninja` on `PATH` when ESP-IDF left them off it.
+
 ## [0.1.0] - 2026-10-29
 
 First tagged line of the kernel. The items below are the work that landed on `main` through pull request 5. Nothing here was run on a physical board.

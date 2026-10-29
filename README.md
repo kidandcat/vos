@@ -7,7 +7,9 @@ A modular real-time kernel in Lean 4 (toolchain `v4.35.0`, the same as [uvl](htt
 
 The model is a pure function over a fixed task table and fixed queue capacities. Nothing in the kernel path allocates a new slot or grows a queue past its capacity. Modules are opt-in at the import: `Vos.Queue` does not import the scheduler, `Vos.Sched` does not import queues, and `Vos.Kernel` is the layer that uses both. `Vos.Hal` is only the port record. A target that does not import a module does not refer to it.
 
-The core stays small and standalone. It does not depend on a VM or on an AI-agent sandbox. That code, when it exists, lives under `Vos.Sandbox` or `Vos.Agent` and is imported only by a target that wants it. `Vos.lean` does not import it. `scripts/check-firmware-boundary.sh` fails if any other file under `Vos/` reaches those modules, and if the C bundled into the ESP32 images contains them. The same check covers `target/rv32-virt`, and `target/rp2040` / `target/rp2350` when those trees exist. The bare-metal target is `rp2350-riscv` (Hazard3). The image that runs today is generic RV32 on QEMU `virt`, not that chip. `docs/bare-metal.md`.
+The core stays small and standalone. It does not depend on a VM or on an AI-agent sandbox. That code, when it exists, lives under `Vos.Sandbox` or `Vos.Agent` and is imported only by a target that wants it. `Vos.lean` does not import it. `scripts/check-firmware-boundary.sh` fails if any other file under `Vos/` reaches those modules, if bundled C contains the names, or if `nm` finds a `Vos_Sandbox` or `Vos_Agent` symbol in a bundle object or a linked ELF. The same check covers `target/rv32-virt`, and `target/rp2040` / `target/rp2350` when those trees exist.
+
+The primary targets are ESP32-C3 and ESP32-S3. Both boot in Espressif QEMU. Neither has been run on a board. `rp2350-riscv` (Hazard3, SX126x) and the Pico 2 W are parked. The image under `target/rv32-virt` is generic RV32 on QEMU `virt`, not that chip. `docs/bare-metal.md`.
 
 ```bash
 lake build
@@ -106,7 +108,7 @@ The same demo, compiled to C with the vendored single-threaded runtime and linke
 ## What is not verified
 
 - A physical ESP32-C3 or ESP32-S3. Both images below were booted in QEMU only.
-- An RP2350. `target/rv32-virt` is QEMU `virt`, RV32IMAC, CLINT at `0x02000000`. The Hazard3 on the RP2350 uses the SIO platform timer (datasheet section 3.1.8). That image has not been booted. picoem, Lemur, and rp2350js were not run.
+- An RP2350, a Pico 2 W, a CYW43439, or an SX126x. Those are parked. `target/rv32-virt` is QEMU `virt`, RV32IMAC, CLINT at `0x02000000`. The Hazard3 on the RP2350 uses the SIO platform timer (datasheet section 3.1.8). That image has not been booted. picoem, Lemur, and rp2350js were not run, and this tree does not start that investigation.
 - RP2040 and uvl's bare-metal target.
 - The GPIO level. The shim calls the IDF driver (`gpio_config`, `gpio_set_level`, `gpio_get_level` on pin 4). Under QEMU `esp32c3` and `esp32s3` the readback was 0 after a set to 1. The log says `hal gpio level unread`. The pin was not checked.
 - SPI, I2C, and the radio hook. No slave and no peer is attached in this QEMU command, so a transfer cannot be checked. Those three return -1 and the log says `stub`.
@@ -121,10 +123,10 @@ The portable core is `Sched`, `Queue`, and `Kernel`. A target supplies a clock a
 | Target | Role | In this tree |
 | --- | --- | --- |
 | `host` | Deterministic clock for tests and proofs. | Runs. |
-| ESP32-C3 | One FreeRTOS task (`app_main`) runs the Lean step. An `esp_timer` callback posts ticks on an ESP-IDF queue and does not enter the kernel. | Builds. Booted in QEMU `esp32c3`, not on a board. |
-| ESP32-S3 | Same demo and the same shim, Xtensa toolchain. | Builds. Booted in QEMU `esp32s3`, not on a board. |
-| `rp2350-riscv` | Hazard3 on the RP2350. First bare-metal target. Not booted. | Plan only. See `docs/bare-metal.md`. |
+| ESP32-C3 | Primary. One FreeRTOS task (`app_main`) runs the Lean step. An `esp_timer` callback posts ticks on an ESP-IDF queue and does not enter the kernel. | Builds. Booted in QEMU `esp32c3`, not on a board. |
+| ESP32-S3 | Primary. Same demo and the same shim, Xtensa toolchain. | Builds. Booted in QEMU `esp32s3`, not on a board. |
 | QEMU `virt` RV32 | Generic machine timer and UART. Not an RP2350 memory map. | `target/rv32-virt`. Serial check in CI. |
+| `rp2350-riscv` | Parked. Hazard3 on the RP2350, plus a Pico 2 W and an SX126x, as a later bet. Not booted. | Plan only. See `docs/bare-metal.md`. |
 
 ## Runtime
 
@@ -151,7 +153,7 @@ Vos/Event.lean         32 event flags
 Vos/Spec/Sync.lean     names for the sync properties
 Vos/Hal/Port.lean      target capabilities
 Vos/Sandbox/           VM and agent sandbox; the core does not import it
-docs/bare-metal.md     rp2350-riscv plan; the running image is QEMU virt
+docs/bare-metal.md     C3/S3 are primary; rp2350-riscv is parked
 target/rv32-virt/      generic RV32 startup, not an RP2350 image
 Vos/Host/Sim.lean      host clock and the demo script
 Vos/Target/C3Demo.lean pure demo exported to C
@@ -174,7 +176,7 @@ bash target/esp32s3/run-qemu.sh
 bash target/esp/measure-modules.sh   # per-module text/data/bss, not the IDF image
 ```
 
-`install.sh` does not always leave `cmake` and `ninja` on `PATH`. `setup-tools.sh` installs the distro packages `cmake` and `ninja-build` when `sudo` is available, and it exits if either command is still missing. `idf.py` will not configure without them.
+`install.sh` does not always leave `cmake` and `ninja` on `PATH`. `target/esp/ensure-path.sh` prepends a directory under `~/.espressif/tools`, `/usr/local/bin`, or `/usr/bin` when either command is missing. The chip wrappers and `target/esp/run-qemu.sh` source that file, including once after `export.sh`. `setup-tools.sh` still installs the distro packages `cmake` and `ninja-build` when `sudo` is available. `idf.py` will not configure without them. `VOS_QEMU` overrides the QEMU binary. A generic `QEMU` variable is not read.
 
 The toolchain ships `Init` as host objects. `run-qemu.sh` writes C for those modules to `.lake/c3/init-c` once per toolchain (`target/c3/gen_init_c.sh`), then the bundler keeps the ones the demo reaches. That directory is not in git.
 

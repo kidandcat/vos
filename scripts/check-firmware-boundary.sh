@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The core is standalone. VM and AI-agent sandboxing live under Vos/Sandbox
-# and Vos/Agent. Nothing else in Vos/ may import them, and a firmware bundle
-# may not compile them.
+# and Vos/Agent. Nothing else in Vos/ may import them. A firmware bundle is
+# scanned for those names in C sources and for Vos_Sandbox / Vos_Agent in
+# the symbol table (nm), not only in file names.
 #
 #   scripts/check-firmware-boundary.sh
 #   scripts/check-firmware-boundary.sh .lake/c3/bundle
@@ -84,14 +85,46 @@ for tree in trees:
                 failed = True
                 print(f"{path.relative_to(root)} contains {needle}", file=sys.stderr)
 
+# Lean C spells Vos.Sandbox as Vos_Sandbox (lp_vos_Vos_Sandbox_..., l_Vos_Sandbox_...).
+symbol_needles = ("Vos_Sandbox", "Vos_Agent", "Vos.Sandbox", "Vos.Agent")
+
+def scan_text(label: str, text: str):
+    global failed
+    for needle in symbol_needles:
+        if needle in text:
+            failed = True
+            print(f"{label} contains symbol {needle}", file=sys.stderr)
+            return
+
+def scan_binary(path: pathlib.Path):
+    global failed
+    import subprocess
+    r = subprocess.run(["nm", "-A", str(path)], capture_output=True, text=True)
+    blob = r.stdout + r.stderr
+    if r.returncode != 0:
+        failed = True
+        err = r.stderr.strip() or r.stdout.strip()
+        print(f"nm failed on {path}: {err}", file=sys.stderr)
+        return
+    for needle in ("Vos_Sandbox", "Vos_Agent"):
+        if needle in blob:
+            failed = True
+            print(f"{path} defines a symbol containing {needle}", file=sys.stderr)
+
 for bundle in bundles:
+    if bundle.is_file() and bundle.suffix in {".elf", ".o", ".a"}:
+        scan_binary(bundle)
+        continue
     src = bundle / "src"
     if not src.is_dir():
         sys.exit(f"bundle sources missing: {src}")
-    for path in src.iterdir():
-        if any(part in path.name for part in ("Sandbox", "Agent")):
-            failed = True
-            print(f"bundle contains {path.name}", file=sys.stderr)
+    for path in src.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix in {".c", ".h", ".cpp", ".S", ".s"}:
+            scan_text(str(path), path.read_text(encoding="utf-8", errors="replace"))
+        elif path.suffix in {".o", ".elf", ".a"}:
+            scan_binary(path)
 
 if failed:
     sys.exit("firmware boundary failed")

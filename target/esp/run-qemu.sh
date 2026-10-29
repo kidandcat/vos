@@ -4,6 +4,9 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT"
+# shellcheck disable=SC1091
+source "$ROOT/target/esp/ensure-path.sh"
+ensure_vos_build_tools
 : "${VOS_CHIP:?}" "${VOS_MACHINE:?}" "${VOS_QEMU:?}" "${VOS_PROJECT:?}" "${VOS_TAG:?}" "${VOS_ELF:?}"
 IDF_PATH=${IDF_PATH:-"$HOME/esp/esp-idf"}
 LOG=${LOG:-"$ROOT/.lake/c3/qemu-${VOS_TAG}.log"}
@@ -48,8 +51,10 @@ bash "$ROOT/scripts/check-firmware-boundary.sh" "$ROOT/.lake/c3/bundle"
 
 # shellcheck disable=SC1091
 source "$IDF_PATH/export.sh"
+# export.sh rebuilds PATH and can drop a ninja that lived outside it.
+ensure_vos_build_tools
 if ! command -v cmake >/dev/null || ! command -v ninja >/dev/null; then
-  echo "export.sh did not leave cmake and ninja on PATH." >&2
+  echo "cmake and ninja must be on PATH. Run target/esp32c3/setup-tools.sh." >&2
   exit 1
 fi
 export VOS_BUNDLE="$ROOT/.lake/c3/bundle"
@@ -60,6 +65,7 @@ if [ -f sdkconfig ] && ! grep -q "CONFIG_IDF_TARGET=\"${VOS_CHIP}\"" sdkconfig; 
 fi
 idf.py set-target "$VOS_CHIP"
 idf.py build
+bash "$ROOT/scripts/check-firmware-boundary.sh" "$VOS_PROJECT/build/${VOS_ELF}.elf"
 echo "---- ${VOS_ELF} ----"
 if [ -n "${VOS_SIZE_PREFIX:-}" ] && command -v "${VOS_SIZE_PREFIX}size" >/dev/null; then
   "${VOS_SIZE_PREFIX}size" -d "build/${VOS_ELF}.elf"
