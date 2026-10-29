@@ -22,7 +22,7 @@ if "error:" in text:
     sys.exit("lean reported an error")
 reports = re.findall(r"depends on axioms: \[([^\]]*)\]", text)
 none_ax = len(re.findall(r"does not depend on any axioms", text))
-expected = 55
+expected = 62
 if len(reports) + none_ax != expected:
     sys.exit(f"expected {expected} axiom reports, got {len(reports)} lists and {none_ax} empty")
 allowed = {"propext", "Classical.choice", "Quot.sound"}

@@ -1,4 +1,5 @@
 import Tests.Ref
+import Vos.Arch.Mtime
 import Vos.Event
 import Vos.Host.Sim
 import Vos.Kernel
@@ -236,6 +237,22 @@ def testSendReadies : IO Unit := do
   check "readied" ((w.qs q).items == [] && w.inbox 1 == some 7 &&
     w.sched.park 1 == .alive && w.sched.current == some 1)
 
+def testMtime : IO Unit := do
+  let c0 : Vos.Arch.Mtime.Clock :=
+    { time := 0, cmp := 5, mtie := true, mie := true, busy := false, queued := 0, ticks := 0 }
+  let c1 := Vos.Arch.Mtime.advance c0 4
+  check "before compare" (Vos.Arch.Mtime.pending c1 == false)
+  let c2 := Vos.Arch.Mtime.advance c1 1
+  check "armed" (Vos.Arch.Mtime.armed c2 == true && c2.time == 5)
+  let c3 := Vos.Arch.Mtime.take c2 10
+  check "one tick" (c3.ticks == 1 && c3.queued == 0 && Vos.Arch.Mtime.pending c3 == false)
+  let c4 : Vos.Arch.Mtime.Clock := { c2 with busy := true }
+  let c5 := Vos.Arch.Mtime.take c4 10
+  check "queued" (c5.ticks == 0 && c5.queued == 1)
+  let s := (Sched.spawn (Sched.empty 1) .priority 1).1
+  let stepped := Vos.Arch.Mtime.onTimer c2 s .priority 10
+  check "sched tick" (stepped.1.ticks == 1 && stepped.2.now == s.now + 1)
+
 def testC3Demo : IO Unit := do
   check "c3 trace" (Vos.Target.C3Demo.trace == [1, 2, 4])
 
@@ -273,6 +290,7 @@ def main : IO UInt32 := do
     testMutex
     testEvents
     testSendReadies
+    testMtime
     testC3Demo
     testSize
     testRing 7 300

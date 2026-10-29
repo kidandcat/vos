@@ -9,6 +9,7 @@ import Vos.Sem
 import Vos.Mutex
 import Vos.Event
 import Vos.Hal.Port
+import Vos.Arch.Mtime
 import Vos.Host.Sim
 import Vos.Target.C3Demo
 import Vos.Target.Size.Empty
